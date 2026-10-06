@@ -1,0 +1,69 @@
+<style>
+  body { font: 12px/1.4 Inter, system-ui, sans-serif; margin: 0; padding: 12px; color: var(--figma-color-text); background: var(--figma-color-bg); }
+  .row { display: flex; gap: 6px; margin-bottom: 8px; }
+  button { font: inherit; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--figma-color-border); background: var(--figma-color-bg-secondary); color: inherit; cursor: pointer; }
+  button.primary { flex: 1; background: var(--figma-color-bg-brand); color: var(--figma-color-text-onbrand); border: 0; }
+  button:disabled { opacity: .5; cursor: default; }
+  input { flex: 1; min-width: 0; font: inherit; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--figma-color-border); background: transparent; color: inherit; }
+  #status { color: var(--figma-color-text-secondary); margin-bottom: 8px; }
+  #status::before { content: "●"; margin-right: 6px; color: var(--dot, #999); }
+  #out a { color: var(--figma-color-text-brand); cursor: pointer; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .warn { color: var(--figma-color-text-warning); }
+  .err { color: var(--figma-color-text-danger); }
+</style>
+<div id="status">Connecting to bridge…</div>
+<div class="row"><button class="primary" id="sel">Copy Pen selection</button></div>
+<div class="row"><input id="ids" placeholder="Pen IDs, e.g. pO0Ah cdKeP" /><button id="go">Copy</button></div>
+<div id="out"></div>
+<script>
+  const BRIDGE = "http://localhost:__PORT__", KEY = "__KEY__", DEBUG = __DEBUG__;
+  const $ = id => document.getElementById(id);
+  let fetchMs = 0;
+  const status = (text, color) => { $("status").textContent = text; $("status").style.setProperty("--dot", color); };
+  const api = (path, opts) => fetch(`${BRIDGE}${path}${path.includes("?") ? "&" : "?"}key=${KEY}`, opts);
+
+  async function health() {
+    try {
+      const r = await api("/health");
+      if (r.ok) status("Connected to Pen", "#14ae5c");
+      else status(r.status === 401 ? "Bridge rejected key — rebuild plugin" : (await r.json()).error, "#f24822");
+    } catch { status("Bridge not running", "#f24822"); }
+  }
+  health(); setInterval(health, 3000);
+
+  async function copy(ids) {
+    $("sel").disabled = $("go").disabled = true;
+    $("out").textContent = "Copying…";
+    try {
+      const t = Date.now();
+      const r = await api("/frames" + (ids ? "?ids=" + encodeURIComponent(ids) : ""));
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error);
+      fetchMs = Date.now() - t;
+      parent.postMessage({ pluginMessage: { type: "copy", data } }, "*");
+    } catch (e) { done({ error: e.message }); }
+  }
+  $("sel").onclick = () => copy("");
+  $("go").onclick = () => $("ids").value.trim() && copy($("ids").value.trim());
+  $("ids").onkeydown = e => { if (e.key === "Enter") $("go").onclick(); };
+
+  function done(m) {
+    $("sel").disabled = $("go").disabled = false;
+    const out = $("out"); out.textContent = "";
+    if (m.error) { out.innerHTML = `<div class="err"></div>`; out.firstChild.textContent = m.error; return; }
+    const head = document.createElement("div");
+    head.textContent = `${m.copies.length} cop${m.copies.length === 1 ? "y" : "ies"} · Pen ${fetchMs} ms · Figma ${m.ms} ms`;
+    out.append(head);
+    for (const c of m.copies) {
+      const a = document.createElement("a"); a.textContent = "→ " + c.name;
+      a.onclick = () => parent.postMessage({ pluginMessage: { type: "focus", id: c.id } }, "*");
+      out.append(a);
+    }
+    for (const w of m.warnings) { const d = document.createElement("div"); d.className = "warn"; d.textContent = "⚠ " + w; out.append(d); }
+  }
+  onmessage = e => {
+    const m = e.data.pluginMessage;
+    if (m.type === "done" || m.type === "error") done(m);
+    else if (m.type === "snapshot" && DEBUG) api("/snapshot", { method: "POST", body: JSON.stringify(m) });
+  };
+</script>

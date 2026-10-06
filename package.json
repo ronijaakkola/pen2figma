@@ -1,0 +1,21 @@
+{
+  "name": "pen2figma",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.ts",
+    "bridge": "node bridge/server.ts",
+    "install-bridge": "node scripts/install.ts",
+    "uninstall-bridge": "node scripts/install.ts --uninstall",
+    "check": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "lucide-static": "^1.52.0"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.140.0",
+    "@types/node": "^26.6.4",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
+  }
+}
